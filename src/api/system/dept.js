@@ -61,3 +61,12 @@ export function delDept(deptId) {
     method: 'delete'
   })
 }
+
+//部门树
+
+export function getDeptTree(deptId){
+  return request({
+    url: '/system/dept/deptUserTree/' + deptId,
+    method: 'get'
+  })
+}

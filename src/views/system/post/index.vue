@@ -301,8 +301,11 @@ export default {
     /** 导出按钮操作 */
     handleExport() {
       this.download('system/post/export', {
+        // ... 扩展运算符，将 this.queryParams 中的参数展开并作为请求的参数传递给后端。
         ...this.queryParams
-      }, `post_${new Date().getTime()}.xlsx`)
+      },
+      // 导出文件的名称，使用了时间戳
+       `post_${new Date().getTime()}.xlsx`)
     }
   }
 };

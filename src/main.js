@@ -38,6 +38,11 @@ import VueMeta from 'vue-meta'
 // 字典数据组件
 import DictData from '@/components/DictData'
 
+//xx 全局组件 部门/员工tree drawer抽屉
+import AttendeeSelector from '@/views/system/meeting/AttendeeSelector'
+//xx 引入阿里云字体图标css
+// import '../assets/icons/iconfont.css'    
+
 // 全局方法挂载
 Vue.prototype.getDicts = getDicts
 Vue.prototype.getConfigKey = getConfigKey
@@ -57,6 +62,11 @@ Vue.component('Editor', Editor)
 Vue.component('FileUpload', FileUpload)
 Vue.component('ImageUpload', ImageUpload)
 Vue.component('ImagePreview', ImagePreview)
+
+//xx 全局组件 部门/员工tree drawer抽屉
+// Vue.component('AttendeeSelector', AttendeeSelector)
+
+
 
 Vue.use(directive)
 Vue.use(plugins)

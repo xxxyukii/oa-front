@@ -53,9 +53,14 @@ export function resetForm(refName) {
   }
 }
 
-// 添加日期范围
+// 添加日期范围   将日期范围添加到查询参数中
+// 将日期范围（dateRange日期范围数组）添加到查询参数对象（params）中，用于查询时的时间筛选。propName可选参数
 export function addDateRange(params, dateRange, propName) {
-  let search = params;
+  console.log(params);
+  console.log(dateRange, propName);
+
+  let search = params;  // 保留原始查询参数
+  //xxx// 确保 params 的 params 属性是一个对象
   search.params = typeof (search.params) === 'object' && search.params !== null && !Array.isArray(search.params) ? search.params : {};
   dateRange = Array.isArray(dateRange) ? dateRange : [];
   if (typeof (propName) === 'undefined') {

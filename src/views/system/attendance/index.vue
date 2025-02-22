@@ -1,5 +1,13 @@
 <template>
   <div class="app-container">
+    <!-- 实时打卡 -->
+    <el-row>
+      <el-button class="text" type="primary" circle @click="handleClockIn"
+        >上班打卡
+        <p>{{ currentTime }}</p>
+      </el-button>
+    </el-row>
+
     <el-row :gutter="20">
       <!--部门数据-->
       <el-col :span="4" :xs="24">
@@ -29,7 +37,7 @@
       </el-col>
       <!--用户数据-->
       <el-col :span="20" :xs="24">
-        <!-- 2. 用户名称 创建时间 板块 -->
+        <!-- 2. 查询板块 -->
         <el-form
           :model="queryParams"
           ref="queryForm"
@@ -44,34 +52,22 @@
               placeholder="请输入用户名称"
               clearable
               style="width: 240px"
+              prefix-icon="el-icon-search"
               @keyup.enter.native="handleQuery"
             />
           </el-form-item>
-          <el-form-item label="手机号码" prop="phonenumber">
+
+          <el-form-item label="员工工号" prop="workId">
             <el-input
-              v-model="queryParams.phonenumber"
-              placeholder="请输入手机号码"
+              v-model="queryParams.workId"
+              placeholder="请输入工号"
               clearable
               style="width: 240px"
               @keyup.enter.native="handleQuery"
             />
           </el-form-item>
-          <el-form-item label="状态" prop="status">
-            <el-select
-              v-model="queryParams.status"
-              placeholder="用户状态"
-              clearable
-              style="width: 240px"
-            >
-              <el-option
-                v-for="dict in dict.type.sys_normal_disable"
-                :key="dict.value"
-                :label="dict.label"
-                :value="dict.value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="创建时间">
+
+          <el-form-item label="考勤时间">
             <el-date-picker
               v-model="dateRange"
               style="width: 240px"
@@ -98,20 +94,9 @@
           </el-form-item>
         </el-form>
 
-        <!-- 3.新增修改点击按钮 -->
-    <!-- gutter 属性用于设置行内列之间的间距（空隙） -->
+        <!-- 3.修改点击按钮 -->
+
         <el-row :gutter="10" class="mb8">
-          <el-col :span="1.5">
-            <el-button
-              type="primary"
-              plain
-              icon="el-icon-plus"
-              size="mini"
-              @click="handleAdd"
-              v-hasPermi="['system:user:add']"
-              >新增</el-button
-            >
-          </el-col>
           <el-col :span="1.5">
             <el-button
               type="success"
@@ -124,18 +109,7 @@
               >修改</el-button
             >
           </el-col>
-          <el-col :span="1.5">
-            <el-button
-              type="danger"
-              plain
-              icon="el-icon-delete"
-              size="mini"
-              :disabled="multiple"
-              @click="handleDelete"
-              v-hasPermi="['system:user:remove']"
-              >删除</el-button
-            >
-          </el-col>
+
           <el-col :span="1.5">
             <el-button
               type="info"
@@ -154,30 +128,28 @@
               icon="el-icon-download"
               size="mini"
               @click="handleExport"
-              v-hasPermi="['system:user:export']"
+              v-hasPermi="['system:attendance:export']"
               >导出</el-button
             >
           </el-col>
           <right-toolbar
             :showSearch.sync="showSearch"
-            @queryTable="getList"
+            @queryTable="getAttendanceList"
             :columns="columns"
           ></right-toolbar>
         </el-row>
 
+        <!-- table表格信息 -->
+        <!-- 多选框 -->
         <el-table
           v-loading="loading"
-          :data="userList"
+          :data="attendanceList"
           @selection-change="handleSelectionChange"
+          @cell-dblclick="handleCellDblClick"
         >
           <el-table-column type="selection" width="50" align="center" />
-          <el-table-column
-            label="用户编号"
-            align="center"
-            key="userId"
-            prop="userId"
-            v-if="columns[0].visible"
-          />
+
+          <!-- 表格列内容过长时的显示问题。  :show-overflow-tooltip 自动触发省略效果（显示为 "..."） -->
           <el-table-column
             label="用户名称"
             align="center"
@@ -186,104 +158,101 @@
             v-if="columns[1].visible"
             :show-overflow-tooltip="true"
           />
-          <el-table-column
-            label="用户昵称"
-            align="center"
-            key="nickName"
-            prop="nickName"
-            v-if="columns[2].visible"
-            :show-overflow-tooltip="true"
-          />
+          <!-- 部门 -->
           <el-table-column
             label="部门"
             align="center"
             key="deptName"
-            prop="dept.deptName"
-            v-if="columns[3].visible"
+            prop="deptName"
+            v-if="columns[2].visible"
             :show-overflow-tooltip="true"
           />
+
+          <!-- 工号 -->
           <el-table-column
-            label="手机号码"
+            label="工号"
             align="center"
-            key="phonenumber"
-            prop="phonenumber"
-            v-if="columns[4].visible"
-            width="120"
+            key="workId"
+            prop="workId"
+            v-if="columns[7].visible"
+            :show-overflow-tooltip="true"
           />
+
+          <!-- 考勤日期 -->
           <el-table-column
-            label="状态"
+            label="考勤日期"
             align="center"
-            key="status"
-            v-if="columns[5].visible"
+            prop="attendanceDate"
+            v-if="columns[3].visible"
+            width="160"
           >
+            <!-- 插槽 作用域 子组件 -->
             <template slot-scope="scope">
-              <el-switch
-                v-model="scope.row.status"
-                active-value="0"
-                inactive-value="1"
-                @change="handleStatusChange(scope.row)"
-              ></el-switch>
+              <!-- <p>{{ parseTime(scope.row.createTime, '{h}:{m}:{s}') }}</p>
+              <span>{{ parseTime(scope.row.createTime, '{y}-{m}-{d}') }}</span> -->
+              <span>{{
+                parseTime(scope.row.attendanceDate, "{y}-{m}-{d}")
+              }}</span>
             </template>
           </el-table-column>
+
+          <!-- 上班打卡 -->
           <el-table-column
-            label="创建时间"
+            label="上班打卡"
             align="center"
-            prop="createTime"
-            v-if="columns[6].visible"
+            prop="amTime"
+            v-if="columns[4].visible"
             width="160"
           >
             <template slot-scope="scope">
-              <span>{{ parseTime(scope.row.createTime) }}</span>
+              <span>{{ parseTime(scope.row.amTime) }}</span>
+              <!-- 如果不是正在编辑的单元格，展示打卡时间 -->
             </template>
           </el-table-column>
+
+          <!-- 下班打卡 -->
+          <el-table-column
+            label="下班打卡"
+            align="center"
+            prop="pmTime"
+            v-if="columns[5].visible"
+            width="160"
+          >
+            <template slot-scope="scope">
+              <span>{{ parseTime(scope.row.pmTime) }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- 备注 -->
+          <el-table-column
+            label="备注"
+            align="center"
+            key="remark"
+            prop="remark"
+            v-if="columns[6].visible"
+            width="120"
+          />
+
+          <!-- 操作 -->
           <el-table-column
             label="操作"
             align="center"
             width="160"
             class-name="small-padding fixed-width"
           >
-            <template slot-scope="scope" v-if="scope.row.userId !== 1">
+            <!-- //权限判断 v-hasPermi="['system:user:edit']"  -->
+            <template slot-scope="scope">
               <el-button
                 size="mini"
                 type="text"
                 icon="el-icon-edit"
+                v-if="currentUserId === 1"
                 @click="handleUpdate(scope.row)"
                 v-hasPermi="['system:user:edit']"
                 >修改</el-button
               >
-              <el-button
-                size="mini"
-                type="text"
-                icon="el-icon-delete"
-                @click="handleDelete(scope.row)"
-                v-hasPermi="['system:user:remove']"
-                >删除</el-button
-              >
-              <el-dropdown
-                size="mini"
-                @command="(command) => handleCommand(command, scope.row)"
-                v-hasPermi="['system:user:resetPwd', 'system:user:edit']"
-              >
-                <el-button size="mini" type="text" icon="el-icon-d-arrow-right"
-                  >更多</el-button
-                >
-                <el-dropdown-menu slot="dropdown">
-                  <el-dropdown-item
-                    command="handleResetPwd"
-                    icon="el-icon-key"
-                    v-hasPermi="['system:user:resetPwd']"
-                    >重置密码</el-dropdown-item
-                  >
-                  <el-dropdown-item
-                    command="handleAuthRole"
-                    icon="el-icon-circle-check"
-                    v-hasPermi="['system:user:edit']"
-                    >分配角色</el-dropdown-item
-                  >
-                </el-dropdown-menu>
-              </el-dropdown>
 
-              <!-- xx底 -->
+              <!-- 底 -->
             </template>
           </el-table-column>
         </el-table>
@@ -293,183 +262,45 @@
           :total="total"
           :page.sync="queryParams.pageNum"
           :limit.sync="queryParams.pageSize"
-          @pagination="getList"
+          @pagination="getAttendanceList"
         />
       </el-col>
     </el-row>
 
     <!-- 添加或修改用户配置对话框 -->
-    <!-- xxx修改弹框的家庭住址取消级联选择框 -->
     <el-dialog :title="title" :visible.sync="open" width="600px" append-to-body>
       <el-form ref="form" :model="form" :rules="rules" label-width="80px">
         <el-row>
           <el-col :span="12">
-            <el-form-item label="用户昵称" prop="nickName">
-              <el-input
-                v-model="form.nickName"
-                placeholder="请输入用户昵称"
-                maxlength="30"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="归属部门" prop="deptId">
-              <treeselect
-                v-model="form.deptId"
-                :options="deptOptions"
-                :show-count="true"
-                placeholder="请选择归属部门"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="手机号码" prop="phonenumber">
-              <el-input
-                v-model="form.phonenumber"
-                placeholder="请输入手机号码"
-                maxlength="11"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="邮箱" prop="email">
-              <el-input
-                v-model="form.email"
-                placeholder="请输入邮箱"
-                maxlength="50"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item
-              v-if="form.userId == undefined"
-              label="用户名称"
-              prop="userName"
-            >
+            <el-form-item label="用户名称" prop="userName">
               <el-input
                 v-model="form.userName"
                 placeholder="请输入用户名称"
                 maxlength="30"
+                :disabled="true"
               />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item
-              v-if="form.userId == undefined"
-              label="用户密码"
-              prop="password"
-            >
-              <el-input
-                v-model="form.password"
-                placeholder="请输入用户密码"
-                type="password"
-                maxlength="20"
-                show-password
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="用户性别">
-              <el-select v-model="form.sex" placeholder="请选择性别">
-                <el-option
-                  v-for="dict in dict.type.sys_user_sex"
-                  :key="dict.value"
-                  :label="dict.label"
-                  :value="dict.value"
-                ></el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="状态">
-              <el-radio-group v-model="form.status">
-                <el-radio
-                  v-for="dict in dict.type.sys_normal_disable"
-                  :key="dict.value"
-                  :label="dict.value"
-                  >{{ dict.label }}</el-radio
-                >
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="岗位">
-              <el-select
-                v-model="form.postIds"
-                multiple
-                placeholder="请选择岗位"
-              >
-                <el-option
-                  v-for="item in postOptions"
-                  :key="item.postId"
-                  :label="item.postName"
-                  :value="item.postId"
-                  :disabled="item.status == 1"
-                ></el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="角色">
-              <el-select
-                v-model="form.roleIds"
-                multiple
-                placeholder="请选择角色"
-              >
-                <el-option
-                  v-for="item in roleOptions"
-                  :key="item.roleId"
-                  :label="item.roleName"
-                  :value="item.roleId"
-                  :disabled="item.status == 1"
-                ></el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <!-- xxx工号    -->
-
-        <el-row>
           <el-col :span="12">
             <el-form-item label="工号" prop="workId">
               <el-input
                 v-model="form.workId"
-                placeholder="请输入工号"
+                placeholder="工号"
                 maxlength="30"
+                :disabled="true"
               />
             </el-form-item>
           </el-col>
-
-          <!-- 出生日期 -->
-          <el-col :span="12">
-            <el-form-item label="出生日期" prop="birthday">
-              <el-date-picker
-                v-model="birthday"
-                type="date"
-                placeholder="选择日期"
-                style="width: 100%"
-              >
-              </el-date-picker>
-            </el-form-item>
-          </el-col>
         </el-row>
 
-        <!-- xxx入职日期 -->
+        <!-- xxx考勤时间 -->
         <el-row>
           <el-col :span="12">
-            <el-form-item label="入职日期" prop="startDate">
+            <el-form-item label="上班打卡" prop="amTime">
               <el-date-picker
-                v-model="form.startDate"
-                type="date"
+                value-format="yyyy-MM-dd HH:mm:ss"
+                v-model="form.amTime"
+                type="datetimerange"
                 placeholder="选择日期"
                 style="width: 100%"
               >
@@ -477,45 +308,19 @@
             </el-form-item>
           </el-col>
 
-          <!-- xxx离职日期 -->
+          <!-- value-format="yyyy-MM-dd hh:mm:ss"  element-ui的日期时间选择器与localdatetime类型的转换 -->
+          <!-- yyyy-MM-dd hh:mm:ss格式时12小时制，要使用24小时制应该使用yyyy-MM-dd HH:mm:ss格式。 -->
           <el-col :span="12">
-            <el-form-item label="离职日期" prop="endDate">
+            <el-form-item label="下班打卡" prop="pmTime">
               <el-date-picker
-                v-model="form.endDate"
-                type="date"
+                v-model="form.pmTime"
+                value-format="yyyy-MM-dd HH:mm:ss"
+                type="datetime"
                 placeholder="选择日期"
+                :default-time="['00:00:00', '23:59:59']"
                 style="width: 100%"
               >
               </el-date-picker>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <!-- xxx地址 -->
-        <el-row>
-          <el-col :span="24" v-if="show">
-            <el-form-item label="家庭地址" prop="selectedOptions">
-              <el-cascader
-                size="large"
-                v-model="form.selectedOptions"
-                :options="options"
-                :props="cascaderProps"
-                placeholder="请选择省市区"
-                @change="handleChange"
-                style="width: 100%"
-              >
-              </el-cascader>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="24">
-            <el-form-item label="详细地址" prop="address">
-              <el-input
-                v-model="form.address"
-                placeholder="请输入详细地址"
-                maxlength="60"
-              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -539,7 +344,7 @@
       </div>
     </el-dialog>
 
-    <!-- 用户导入对话框 -->
+    <!-- 考勤导入对话框 -->
     <el-dialog
       :title="upload.title"
       :visible.sync="upload.open"
@@ -563,7 +368,7 @@
         <div class="el-upload__tip text-center" slot="tip">
           <div class="el-upload__tip" slot="tip">
             <el-checkbox v-model="upload.updateSupport" />
-            是否更新已经存在的用户数据
+            是否更新已经存在的考勤数据
           </div>
           <span>仅允许导入xls、xlsx格式文件。</span>
           <el-link
@@ -587,52 +392,37 @@
 import {
   listUser,
   getUser,
-  delUser,
-  addUser,
-  updateUser,
   resetUserPwd,
   changeUserStatus,
   deptTreeSelect,
 } from "@/api/system/user";
+import { getInfo } from "@/api/login";
 import { getToken } from "@/utils/auth";
 import Treeselect from "@riophae/vue-treeselect";
 import "@riophae/vue-treeselect/dist/vue-treeselect.css";
-
-// xxx全国地址
-// import regionOptions from "element-china-area-data";
-import { regionData, codeToText, TextToCode } from "element-china-area-data";
-import areaData from "element-china-area-data";
+import {
+  addCheck,
+  attendanceAllList,
+  updateAttendance,
+  getAttendance,
+} from "@/api/system/attendance";
+//格式化日期
+import dayjs from "dayjs";
+// import XLSX from "xlsx";
 
 export default {
-  name: "User",
-  //xx这个是哪里来的
+  name: "attendance",
   dicts: ["sys_normal_disable", "sys_user_sex"],
   components: { Treeselect },
   data() {
     return {
-      regionData,
-      codeToText,
-      TextToCode,
-      show: true, //修改/新增家庭住址级联选择器页面展示
-      // xxx入职/离职日期
-      // disabledDate(time) {
-      //       return time.getTime() > Date.now();
-      //     },
+      currentUserId: undefined,
+      // 实时打卡
+      currentTime: "", // 实时时间显示
+      timer: null, // 定时器引用,
+      attendanceList: [], // 考勤记录表格数据
+      editableData: null, // 存储当前正在编辑的单元格，格式为 rowId-fieldName
 
-      // address: "",
-      //xxx地址栏
-
-      selectedOptions: [], // 存储用户选择的省市区
-      options: regionData, // 使用插件提供的省市区数据
-
-      cascaderProps: {
-        expandTrigger: "click", // 展开
-        checkStrictly: false, // 禁止选择非叶子节点
-        emitPath: true, // 返回完整路径
-      },
-
-      // xxx出生日期
-      birthday: "",
       // 遮罩层
       loading: true,
       // 选中数组
@@ -682,26 +472,37 @@ export default {
         // 设置上传的请求头部
         headers: { Authorization: "Bearer " + getToken() },
         // 上传的地址
-        url: process.env.VUE_APP_BASE_API + "/system/user/importData",
+        url: process.env.VUE_APP_BASE_API + "/system/attendance/importData",
       },
       // 查询参数
       queryParams: {
         pageNum: 1,
         pageSize: 10,
-        userName: undefined,
-        phonenumber: undefined,
-        status: undefined,
+        // params: {},
+        userName: "",
+        // phonenumber: undefined,
+        // status: undefined,
         deptId: undefined,
+        // xxx
+        remark: undefined,
+        attendanceDate: "",
+        amTime: undefined,
+        pmTime: undefined,
+        attId: undefined,
+        deptName: undefined,
+        workId: undefined,
       },
+      dateRange: [],
       // 列信息
       columns: [
         { key: 0, label: `用户编号`, visible: true },
         { key: 1, label: `用户名称`, visible: true },
-        { key: 2, label: `用户昵称`, visible: true },
-        { key: 3, label: `部门`, visible: true },
-        { key: 4, label: `手机号码`, visible: true },
-        { key: 5, label: `状态`, visible: true },
-        { key: 6, label: `创建时间`, visible: true },
+        { key: 2, label: `部门`, visible: true },
+        { key: 3, label: `考勤日期`, visible: true },
+        { key: 4, label: `上班打卡`, visible: true },
+        { key: 5, label: `下班打卡`, visible: true },
+        { key: 6, label: `备注`, visible: true },
+        { key: 7, label: `工号`, visible: true },
       ],
       // 表单校验
       rules: {
@@ -760,44 +561,52 @@ export default {
       this.$refs.tree.filter(val);
     },
   },
+  mounted() {
+    // 初始化当前时间并设置定时器
+    this.updateTime();
+    this.timer = setInterval(this.updateTime, 1000); // 每秒更新一次时间
+  },
+
   created() {
-    this.getList();
+    console.log("roles",this.$store.state.roles)
+    // this.currentUserId = this.$store.state.roles.filter((roles)=>roles.roleId===1)
+    // this.currentUserId = this.$store.state.user.id;
+    // this.getList();
+    this.getAttendanceList();
     this.getDeptTree();
     this.getConfigKey("sys.user.initPassword").then((response) => {
       this.initPassword = response.msg;
     });
-    console.log("区域数据0:", this.codeToText); // 检查是否加载了数据
   },
+  beforeDestroy() {
+    // 清除定时器
+    clearInterval(this.timer);
+  },
+
   methods: {
+    // 示例：将 ISO 8601 格式转为 YYYY-MM-DD HH:mm:ss
+    formatTime(isoDate) {
+      return dayjs(isoDate).format("YYYY-MM-DD HH:mm:ss");
+    },
+    //xxx
+    handleClockIn() {
+      addCheck().then((response) => {
+        console.log(JSON.stringify({ check_time: this.currentTime }));
+      });
+    },
+    updateTime() {
+      // 获取当前时间并格式化为 时:分:秒
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      const seconds = String(now.getSeconds()).padStart(2, "0");
+      this.currentTime = `${hours}:${minutes}:${seconds}`;
+    },
+
     // xxx地址栏
     handleAreaChange(value) {
       console.log("选中的值:", value);
     },
-
-    //xxx这方法从哪儿调的？
-    /** 
-    projectInfo() {
-      var that = this;
-      getProjectInfo({ token: getToken(), id: that.id })
-        .then((res) => {
-          this.addForm = {
-            id: res.id,
-            // 基础信息
-            p_name: res.p_name, //项目名
-            p_message: res.p_message, //项目信息
-            area: res.area, //地区
-            remark: res.remark, //备注
-          };
-          this.selectedOptions =
-            TextToCode[this.addForm.area.split("/")[0]][
-              this.addForm.area.split("/")[1]
-            ][this.addForm.area.split("/")[2]].code;
-        })
-        .catch((err) => {
-          Message.error(err);
-        });
-    },
-    */
 
     handleChange(value) {
       console.log("handleChange-value地址：" + value); // 21,2104,210402
@@ -839,20 +648,86 @@ export default {
     /** 查询用户列表 */
     getList() {
       this.loading = true;
-      console.log(
-        "user---调用 addDateRange 前的 queryParams:",
-        this.queryParams
-      );
-      const updatedParams = this.addDateRange(this.queryParams, this.dateRange);
-      // 打印调用 addDateRange 后的值
-      console.log("user---调用 addDateRange 后的 queryParams:", updatedParams);
-      listUser(updatedParams).then(
+      // 传入带有日期范围的查询参数
+      listUser(this.addDateRange(this.queryParams, this.dateRange)).then(
         (response) => {
           this.userList = response.rows;
           this.total = response.total;
           this.loading = false;
         }
       );
+    },
+    //xxx 页码
+    handlePageChange(page) {
+      this.queryParams.pageNum = page; // 更新当前页码
+      this.getAttendanceList(); // 重新获取数据
+    },
+    /** xxx查询考勤列表 */
+    // 调 接口方法 传递经过 addDateRange 查询参数
+    getAttendanceList() {
+      this.loading = true;
+      // 打印 queryParams 调用 addDateRange 前的值
+      console.log("调用 addDateRange 前的 queryParams:", this.queryParams);
+
+      this.queryParams.beginTime = this.dateRange[0]; //可以直接.beginTime 赋值，并没有在data中初始化beginTime
+      this.queryParams.endTime = this.dateRange[1];
+
+      attendanceAllList(this.queryParams).then((response) => {
+        console.log("考勤记录总", response);
+        this.attendanceList = response.rows;
+        console.log("response.rows", response.rows);
+        this.total = response.total;
+        this.loading = false;
+      });
+    },
+
+    // xxx
+    // 双击某个单元格，进入编辑模式
+    startEdit(row, field) {
+      this.editingField = `${row.id}-${field}`; // 记录正在编辑的单元格
+    },
+
+    // 保存编辑后的数据
+    saveEdit(row, field) {
+      // 退出编辑状态
+      this.editingField = null;
+      const payload = {
+        id: row.id, // 记录的 ID
+        [field]: row[field], // 动态设置字段名，更新相应的字段值
+      };
+      // 调用接口更新后端数据
+      updateAttendance(payload)
+        .then(() => {
+          this.$message.success("保存成功");
+        })
+        .catch(() => {
+          this.$message.console.error("保存失败，请重试");
+        });
+    },
+
+    // 双击时触发
+    handleCellDblClick(row, column, cell, event) {
+      if (column.property === "customerBoxNum") {
+        this.editableData = row; // 设置当前编辑的数据项
+        this.$nextTick(() => {
+          const inputRef = "input-" + this.boxList.indexOf(row);
+          const inputElement = this.$refs[inputRef];
+          if (inputElement) {
+            inputElement.focus(); // 聚焦输入框
+          } else {
+            console.error("Input element not found:", inputRef);
+          }
+        });
+      }
+    },
+
+    handleInputBlur(row) {
+      // 输入框失去焦点时保存更改
+      this.editableData = null; // 返回到静态显示状态
+    },
+    handleInputEnter(row) {
+      // 按下回车键时保存更改
+      this.editableData = null; // 返回到静态显示状态
     },
 
     /** 查询部门下拉树结构 */
@@ -868,6 +743,7 @@ export default {
     },
     // 节点单击事件
     handleNodeClick(data) {
+      console.log(data);
       this.queryParams.deptId = data.id;
       this.handleQuery();
     },
@@ -910,6 +786,11 @@ export default {
         workId: undefined,
         address: undefined,
         selectedOptions: [],
+        remark: undefined,
+        attId: undefined,
+        amTime: undefined,
+        pmTime: undefined,
+        deptName: undefined,
       };
       // this.selectedOptions =[]
       this.resetForm("form");
@@ -917,7 +798,7 @@ export default {
     /** 搜索按钮操作 */
     handleQuery() {
       this.queryParams.pageNum = 1;
-      this.getList();
+      this.getAttendanceList();
     },
     /** 重置按钮操作 */
     resetQuery() {
@@ -929,7 +810,8 @@ export default {
     },
     // 多选框选中数据
     handleSelectionChange(selection) {
-      this.ids = selection.map((item) => item.userId);
+      console.log(selection);
+      this.ids = selection.map((item) => item.attId);
       this.single = selection.length != 1;
       this.multiple = !selection.length;
     },
@@ -948,49 +830,31 @@ export default {
     },
     /** 新增按钮操作 */
     handleAdd() {
-      /**
-      console.log("区域数据1:", this.regionData); // 检查是否加载了数据 数组对象数字
-      // 检查是否加载了数据
-      console.log(
-        "区域数据2:",
-        this.codeToText[21],
-        this.codeToText[2104],
-        this.codeToText[210411]
-      ); 
-     // console.log("区域数据3:", this.TextToCode); // 检查是否加载了数据 undefined
-     */
       this.show = true;
       this.reset();
       getUser().then((response) => {
-        console.log(5,response);
+        console.log(response);
         this.postOptions = response.posts;
         this.roleOptions = response.roles;
         this.open = true;
         this.title = "添加用户";
         this.form.password = this.initPassword;
-        
       });
     },
 
     /** 修改按钮操作 */
     handleUpdate(row) {
       console.log(row);
-      console.log("deptOptions",this.deptOptions)
       this.show = false;
       this.reset();
-      const userId = row.userId || this.ids;
-      getUser(userId).then((response) => {
-        console.log(response.data);
+      const attId = row.attId || this.ids; //ids 选中数组
+      getAttendance(attId).then((response) => {
         this.form = response.data;
-        this.postOptions = response.posts;
-        this.roleOptions = response.roles;
-        this.$set(this.form, "postIds", response.postIds);
-        this.$set(this.form, "roleIds", response.roleIds);
         this.open = true;
-        this.title = "修改用户";
-        this.form.password = "";
+        this.title = "修改考勤记录";
       });
     },
+
     /** 重置密码按钮操作 */
     handleResetPwd(row) {
       this.$prompt('请输入"' + row.userName + '"的新密码', "提示", {
@@ -1018,90 +882,55 @@ export default {
       this.$router.push("/system/user-auth/role/" + userId);
     },
     /** 提交按钮 */
-
-    /**xxx 
-     * 实现form表单提交验证功能
-model : 绑定整个表单model值
-rules : 整个表单校验规则
-ref ：获取该表单form组件
-prop : 绑定每个表单的规则，写在el-form-item上
-validate : 对整个表单进行校验的方法
-valid : 每个必填表单项都提交为true,否则为false
-    */
-   //这里为什么是又加了function了？
     submitForm: function () {
-      //表单校验：调用 this.$refs["form"].validate 方法对表单进行验证。
-      //this.$refs 是 Vue 的一个特性，用于访问组件或 DOM 实例。
-      //这里的 form 是通过 ref="form" 绑定的表单组件。
-      //validate 方法触发表单的校验规则，具体配置在 rules 中
-      //校验回调：验证完成后，通过回调函数 (valid) => {} 检查验证结果。
-      //validate 方法接受一个回调函数，校验结束后执行此回调，并将校验结果 (valid) 作为参数传入。
-      //valid 是一个布尔值，如果所有规则验证通过，则为 true；否则为 false。
       this.$refs["form"].validate((valid) => {
         if (valid) {
-          if (this.form.userId != undefined) {
-//             function updateUser(formData) {
-//              return axios.post('/api/updateUser', formData);}
-            updateUser(this.form).then((response) => {
-              //可能来自一个全局的消息提示插件，比如 ElementUI 的 Message
+          if (this.form.attId != undefined) {
+            updateAttendance(this.form).then((response) => {
               this.$modal.msgSuccess("修改成功");
               this.open = false;
-              this.getList();
+              this.getAttendanceList();
             });
-          } else {
-            addUser(this.form).then((response) => {
-              this.$modal.msgSuccess("新增成功");
-              this.open = false;
-              this.getList();
-            });
-            console.log(this.form); //address?
           }
         }
       });
     },
-    /** 删除按钮操作 */
-    handleDelete(row) {
-      const userIds = row.userId || this.ids;
-      this.$modal
-        .confirm('是否确认删除用户编号为"' + userIds + '"的数据项？')
-        .then(function () {
-          return delUser(userIds);
-        })
-        .then(() => {
-          this.getList();
-          this.$modal.msgSuccess("删除成功");
-        })
-        .catch(() => {});
-    },
+
     /** 导出按钮操作 */
     handleExport() {
       this.download(
-        "system/user/export",
+        "system/attendance/export",
         {
           ...this.queryParams,
         },
-        `user_${new Date().getTime()}.xlsx`
+        `attendance_${new Date().getTime()}.xlsx`
       );
     },
     /** 导入按钮操作 */
     handleImport() {
-      this.upload.title = "用户导入";
+      this.upload.title = "考勤导入";
       this.upload.open = true;
     },
     /** 下载模板操作 */
     importTemplate() {
       this.download(
-        "system/user/importTemplate",
+        "system/attendance/importTemplate",
         {},
-        `user_template_${new Date().getTime()}.xlsx`
+        `attendance__template_${new Date().getTime()}.xlsx`
       );
     },
     // 文件上传中处理
     handleFileUploadProgress(event, file, fileList) {
+      console.log(event);
       this.upload.isUploading = true;
     },
     // 文件上传成功处理
     handleFileSuccess(response, file, fileList) {
+      console.log(response);
+      //xx
+      const reader = new FileReader();
+      const data = new Uint8Array(event.target.result);
+
       this.upload.open = false;
       this.upload.isUploading = false;
       this.$refs.upload.clearFiles();
@@ -1110,9 +939,10 @@ valid : 每个必填表单项都提交为true,否则为false
           response.msg +
           "</div>",
         "导入结果",
+        // 将 dangerouslyUseHtmlString 属性设置为 true ，message 就会被当做 HTML 片段处理。
         { dangerouslyUseHTMLString: true }
       );
-      this.getList();
+      this.getAttendanceList();
     },
     // 提交上传文件
     submitFileForm() {
@@ -1125,5 +955,18 @@ valid : 每个必填表单项都提交为true,否则为false
 .el-date-picker {
   width: 200px;
   border-block-color: red;
+}
+
+.text {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.el-table .warning-row {
+  background: oldlace;
+}
+
+.el-table .success-row {
+  background: #f0f9eb;
 }
 </style>

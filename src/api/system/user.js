@@ -134,3 +134,11 @@ export function deptTreeSelect() {
     method: 'get'
   })
 }
+
+// 员工工号姓名id
+export function getUserInfo(userName){
+  return request({
+    url: '/system/user/userInfo/' + userName,
+    method: 'get'
+  })
+}

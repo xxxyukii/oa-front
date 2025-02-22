@@ -460,6 +460,7 @@ export default {
     },
     /** 修改按钮操作 */
     handleUpdate(row) {
+      console.log(333,row);
       this.deptId = row.deptIdS;
       this.reset();
       getDept(row.deptId).then((response) => {
