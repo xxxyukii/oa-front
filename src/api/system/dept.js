@@ -9,6 +9,17 @@ export function listDept(query) {
   })
 }
 
+//xx 2.根据输入框输入的value模糊查询员工信息
+
+export function getempbydeptid(deptId,query){
+  return request({
+    url: `/system/user/getempbydeptid?deptId=${deptId}&query=${query}`,
+    method: 'get',
+
+  })
+
+}
+
 // 查询部门列表（排除节点）
 export function listDeptExcludeChild(deptId) {
   return request({
