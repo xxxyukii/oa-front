@@ -812,7 +812,7 @@ export default {
     handleSelectionChange(selection) {
       console.log(selection);
       this.ids = selection.map((item) => item.attId);
-      this.single = selection.length != 1;
+      this.single = selection.length != 1;//只要是选中了1条以上 修改按钮就得禁用
       this.multiple = !selection.length;
     },
     // 更多操作触发

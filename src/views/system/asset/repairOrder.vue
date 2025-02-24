@@ -41,17 +41,164 @@
 
         <el-form-item label="申请时间">
           <el-date-picker
-            v-model="dateRange"
+            v-model="queryParams.repairDate"
             style="width: 240px"
             value-format="yyyy-MM-dd"
-            type="daterange"
-            range-separator="-"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            type="date"
           ></el-date-picker>
+        </el-form-item>
+
+        <el-form-item label="审核状态" prop="repairStatus">
+          <el-select
+            v-model="queryParams.repairStatus"
+            placeholder="请选择审核状态"
+            clearable
+          >
+            <el-option
+              v-for="s in statusOptions"
+              :key="s.value"
+              :label="s.label"
+              :value="s.value"
+            />
+          </el-select>
+        </el-form-item>
+
+        <!-- 2-2.搜索重置小按钮 -->
+        <el-form-item>
+          <el-button
+            type="primary"
+            icon="el-icon-search"
+            size="mini"
+            @click="handleQuery"
+            >搜索</el-button
+          >
+          <el-button icon="el-icon-refresh" size="mini" @click="resetQuery"
+            >重置</el-button
+          >
         </el-form-item>
       </el-form>
     </el-row>
+
+    <el-table
+      v-loading="loading"
+      :data="repairData"
+      @selection-change="handleSelectionChange"
+      style="width: 100%"
+    >
+      <el-table-column type="selection" width="50" align="center">
+      </el-table-column>
+      <el-table-column
+        label="申请人"
+        align="center"
+        prop="userName"
+        width="160"
+        show-overflow-tooltip
+      >
+      </el-table-column>
+      <el-table-column
+        label="申请时间"
+        align="center"
+        prop="repairDate"
+        width="160"
+        show-overflow-tooltip
+      >
+        <!-- parseTime 解析和格式化时间的库 parseTime将日期字符串转换为JavaScript中的Date对象  自定义格式（如“YYYY-MM-DD HH:mm”）-->
+        <!-- <template slot-scope="scope">
+          <span>{{ parseTime(scope.row.repairDate) }}</span>
+        </template> -->
+      </el-table-column>
+      <el-table-column
+        label="资产名称"
+        align="center"
+        prop="assetId"
+        width="160"
+        show-overflow-tooltip
+      />
+      <el-table-column
+        label="故障现象"
+        align="center"
+        prop="description"
+        width="160"
+        show-overflow-tooltip
+      />
+      <el-table-column
+        label="维修状态"
+        align="center"
+        prop="repairStatus"
+        width="160"
+      >
+        <template slot-scope="scope">
+          <el-tag
+            :type="
+              scope.row.repairStatus === 0
+                ? ''
+                : scope.row.repairStatus === 1
+                ? 'success'
+                : 'danger'
+            "
+            size="mini"
+          >
+            <span>{{ getStatusLabel(scope.row.repairStatus) }}</span>
+          </el-tag>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        label="资产负责人"
+        align="center"
+        prop="assetManagerId"
+        width="80"
+        show-overflow-tooltip
+      />
+
+      <el-table-column
+        label="操作"
+        align="center"
+        class-name="small-padding fixed-width"
+        width="120"
+      >
+        <template slot-scope="scope">
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-delete"
+            @click="handleDelete(scope.row)"
+            v-if="
+              scope.row.userId === form.userId && scope.row.repairStatus === 0
+            "
+            >删除</el-button
+          >
+        </template>
+      </el-table-column>
+      <!-- 审核按钮 -->
+      <el-table-column
+        label="审核"
+        align="center"
+        width="160"
+        class-name="small-padding fixed-width"
+      >
+        <template slot-scope="scope" >
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-edit"
+            @click="handleExamine(scope.row)"
+            v-if="scope.row.repairStatus == 0"
+            >审核</el-button
+          >
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <!-- 分页组件 -->
+    <!-- import Pagination from "@/components/Pagination"; -->
+    <pagination
+      v-show="total > 0"
+      :total="total"
+      :page.sync="queryParams.pageNum"
+      :limit.sync="queryParams.pageSize"
+      @pagination="getList"
+    />
 
     <!-- :visible.sync="dialogVisible" 
     来控制对话框的显示和隐藏。dialogVisible 是一个布尔值，决定对话框是否显示。 -->
@@ -236,6 +383,7 @@ import {
   addReapair,
   uploadFiles,
 } from "@/api/system/asset";
+import { repairList } from "@/api/system/repair";
 export default {
   name: "repairOrder",
   data() {
@@ -243,6 +391,7 @@ export default {
       //:model="form"
 
       form: {},
+      repairData: [], //维修单数据
       //是否更换
       Options: [
         { value: 1, label: "是" },
@@ -258,16 +407,33 @@ export default {
         { value: "Y", label: "在库" },
         { value: "N", label: "无库存" },
       ],
+      //维修状态 map
+      statusOptions: [
+        { value: 0, label: "已申请" },
+        { value: 1, label: "已同意" },
+        { value: 2, label: "已驳回" },
+      ],
       //查询参数
       queryParams: {
         pageNum: 1,
         pageSize: 10,
+        repairStatus: 0,
+        userName: undefined,
+        repairDate: undefined,
       },
+      // 总条数
+      total: 0,
+      // 遮罩层
+      loading: true,
+      // 选中数组
+      ids: [],
+      // 非单个禁用
+      single: true,
+      // 非多个禁用
+      multipleSelction: true,
       // 显示搜索条件
       showSearch: true,
       // 选中的资产ID
-      // 日期范围
-      dateRange: [],
       selectedAssetId: null,
 
       assetList: [],
@@ -296,9 +462,14 @@ export default {
     getInfo().then((response) => {
       console.log("getInfo", response);
       this.form.userName = response.user.userName;
+      this.form.userId = response.user.userId;
+      this.form.roleId = response.user.roles[0].roleId;
       this.form.deptName = response.user.deptName;
+      
+
       console.log(this.form.userName);
     });
+    this.getList();
   },
   // 上传超过限制后隐藏上传图标
   computed: {
@@ -311,7 +482,17 @@ export default {
   mounted() {},
   methods: {
     reset() {
-      this.form = {};
+      this.form = {
+        userName: undefined,
+        repairDate: undefined,
+      };
+      this.resetForm("form"); //表单重置 ruoyi.js
+      // 表单重置
+      // export function resetForm(refName) {
+      //   if (this.$refs[refName]) {
+      //     this.$refs[refName].resetFields();
+      //   }
+      // }
     },
     cancel() {
       this.dialogVisible = false;
@@ -328,12 +509,50 @@ export default {
     /** 搜索按钮操作 */
     handleQuery() {
       this.queryParams.pageNum = 1;
+      this.getList();
+    },
+    /** 重置按钮操作 */
+    resetQuery() {
+      this.resetForm("queryForm");
+      this.queryParams.userName = undefined;
+      this.handleQuery();
+    },
+    //多选框选中数据
+    handleSelectionChange(selection) {
+      console.log(selection);
+      this.ids = selection.map((item) => item.rapairId);
+      this.single = selection.length != 1; //只要是选中了1条以上 修改按钮就得禁用
+      this.multiple = !selection.length;
     },
     disabledDate(date) {
       return date.getTime() < Date.now() - 8.64e7; // 禁用当前日期之前的日期
       // const today = new Date();
       // // 比较日期的时间戳
       // return date.getTime() < today.setHours(0, 0, 0, 0); // 禁用今天之前的日期
+    },
+    //审核状态
+    getStatusLabel(status) {
+      // 根据状态值获取对应的文本标签
+      const option = this.statusOptions.find((item) => item.value === status);
+      return option ? option.label : "未知状态";
+    },
+    //审核按钮操作
+    handleExamine(row){
+
+    },
+    getList() {
+      console.log("qidonglema");
+      this.loading = true;
+      repairList(this.queryParams).then((response) => {
+        this.repairData = response.rows;
+        this.total = response.total;
+        this.loading = false;
+      });
+    },
+    /** 删除按钮操作 */
+
+    handleDelete(row) {
+      this.$modal.confirm("row");
     },
     handleOrder() {
       // this.reset();
