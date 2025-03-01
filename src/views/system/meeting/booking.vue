@@ -443,6 +443,7 @@ export default {
       drawerVisible: false, // 控制 Drawer 是否显示
       // 默认展开的一级节点
       defaultCheckedIds: [], // 默认选中的 id 数组
+      //审核按钮 被选中的那一行数据
       rowExamine: {},
       checkedNodes: [{ key: "12", label: "12" }], //参会人 tree-存储选中的部门或者员工
       // 树的数据

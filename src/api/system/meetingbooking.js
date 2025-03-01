@@ -45,10 +45,10 @@ export function delBooking(bookingId) {
 }
 
 //会议审核
-export function requestStatus(query){
+export function requestStatus(data){
     return request({
       url: '/system/meeting/booking/status',
       method: 'post',
-      data: query
+      data: data
     })
 }

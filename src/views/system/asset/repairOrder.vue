@@ -48,10 +48,11 @@
           ></el-date-picker>
         </el-form-item>
 
-        <el-form-item label="审核状态" prop="repairStatus">
+        <!-- 订单状态 -->
+        <el-form-item label="订单状态" prop="repairStatus">
           <el-select
             v-model="queryParams.repairStatus"
-            placeholder="请选择审核状态"
+            placeholder="请选择订单状态"
             clearable
           >
             <el-option
@@ -81,7 +82,7 @@
 
     <el-table
       v-loading="loading"
-      :data="repairData"
+      :data="filteredRepairData"
       @selection-change="handleSelectionChange"
       style="width: 100%"
     >
@@ -91,7 +92,7 @@
         label="申请人"
         align="center"
         prop="userName"
-        width="160"
+        width="80"
         show-overflow-tooltip
       >
       </el-table-column>
@@ -99,7 +100,7 @@
         label="申请时间"
         align="center"
         prop="repairDate"
-        width="160"
+        width="100"
         show-overflow-tooltip
       >
         <!-- parseTime 解析和格式化时间的库 parseTime将日期字符串转换为JavaScript中的Date对象  自定义格式（如“YYYY-MM-DD HH:mm”）-->
@@ -110,7 +111,7 @@
       <el-table-column
         label="资产名称"
         align="center"
-        prop="assetId"
+        prop="assets.assetName"
         width="160"
         show-overflow-tooltip
       />
@@ -118,7 +119,7 @@
         label="故障现象"
         align="center"
         prop="description"
-        width="160"
+        width="100"
         show-overflow-tooltip
       />
       <el-table-column
@@ -133,8 +134,8 @@
               scope.row.repairStatus === 0
                 ? ''
                 : scope.row.repairStatus === 1
-                ? 'success'
-                : 'danger'
+                ? 'warning'
+                : 'success'
             "
             size="mini"
           >
@@ -144,9 +145,10 @@
       </el-table-column>
 
       <el-table-column
+        v-if="roleId === 1 || roleId === 3"
         label="资产负责人"
         align="center"
-        prop="assetManagerId"
+        prop="assets.assetManagerName"
         width="80"
         show-overflow-tooltip
       />
@@ -155,37 +157,42 @@
         label="操作"
         align="center"
         class-name="small-padding fixed-width"
-        width="120"
+        width="180"
       >
         <template slot-scope="scope">
-          <el-button
-            size="mini"
-            type="text"
-            icon="el-icon-delete"
-            @click="handleDelete(scope.row)"
-            v-if="
-              scope.row.userId === form.userId && scope.row.repairStatus === 0
-            "
-            >删除</el-button
-          >
-        </template>
-      </el-table-column>
-      <!-- 审核按钮 -->
-      <el-table-column
-        label="审核"
-        align="center"
-        width="160"
-        class-name="small-padding fixed-width"
-      >
-        <template slot-scope="scope" >
-          <el-button
-            size="mini"
-            type="text"
-            icon="el-icon-edit"
-            @click="handleExamine(scope.row)"
-            v-if="scope.row.repairStatus == 0"
-            >审核</el-button
-          >
+          <div style="display: flex; gap: 10px; justify-content: center">
+            <el-button
+              size="mini"
+              type="text"
+              icon="el-icon-edit"
+              @click="handleExamine(scope.row)"
+              v-if="scope.row.repairStatus === 0"
+              >维修</el-button
+            >
+            <el-button
+              size="mini"
+              type="text"
+              icon="el-icon-delete"
+              @click="handleComplete(scope.row)"
+              v-else-if="scope.row.repairStatus === 1"
+              >维修完成</el-button
+            >
+            <el-button
+              size="mini"
+              type="text"
+              icon="el-icon-delete"
+              @click="handleComplete(scope.row)"
+              v-else-if="scope.row.repairStatus === 2"
+              >确认</el-button
+            >
+            <el-button
+              size="mini"
+              type="text"
+              icon="el-icon-edit"
+              @click="handleDetails(scope.row)"
+              >工单详情</el-button
+            >
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -306,30 +313,14 @@
         </el-row>
 
         <el-row>
-          <!-- 是否换新 -->
-          <el-col :span="12">
-            <el-form-item label="是否更换产品">
-              <el-select
-                v-model="form.productChange"
-                placeholder="选择产品"
-                @change="handleProductChange"
-              >
-                <el-option
-                  v-for="pc in this.Options"
-                  :key="pc.value"
-                  :label="pc.label"
-                  :value="pc.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
+        
           <!-- 如果更换产品为是/1 就把当前的产品库存 有无 显示出来 Y或者N（是/否） -->
           <el-col :span="12">
-            <el-form-item label="更换产品" v-if="this.form.productChange === 1">
+            <el-form-item label="更换产品" v-if="[1,2,3,4].includes(form.repairStatus)">
               <el-select
                 v-model="form.isInStock"
                 placeholder="库存有否"
-                disabled
+                :disabled="1 !== form.repairStatus ? true : false"
               >
                 <el-option
                   v-for="item in this.stock"
@@ -343,18 +334,18 @@
         </el-row>
         <!-- 维修状态 -->
         <el-row>
-          <el-form-item
-            label="维修状态"
-            prop="repairStatus"
-            v-if="revealStatus"
+          <el-form-item v-if="[1,2,3,4].includes(form.repairStatus)"
+            label="维修方式"
+            prop="repairMethod"
           >
             <el-select
-              v-model="form.repairStatus"
-              placeholder="请选择状态"
+              v-model="form.repairMethod"
+              placeholder="请选择维修方式"
               clearable
+                :disabled="1 !== form.repairStatus ? true : false"
             >
               <el-option
-                v-for="item in status"
+                v-for="item in repairMethodOptions"
                 :key="item.value"
                 :label="item.label"
                 :value="item.value"
@@ -366,10 +357,11 @@
       <!-- slot="footer" 插槽，将按钮放入对话框的底部区域， -->
       <!-- 默认的 footer 插槽 允许你在对话框的底部自定义内容 -->
       <div slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="submitForm">确 定</el-button>
+        <el-button type="primary" @click="submitRepairRequest">确 定</el-button>
         <el-button @click="cancel">取 消</el-button>
       </div>
     </el-dialog>
+
   </div>
 </template>
 
@@ -383,15 +375,23 @@ import {
   addReapair,
   uploadFiles,
 } from "@/api/system/asset";
-import { repairList } from "@/api/system/repair";
+import {
+  repairList,
+  getRepairOrder,
+  handelRepairAction,
+} from "@/api/system/repair";
 export default {
   name: "repairOrder",
   data() {
     return {
       //:model="form"
-
+      //维修申请单
       form: {},
-      repairData: [], //维修单数据
+      //维修人员审核单
+      repairForm: {},
+      //维修单数据
+      repairData: [],
+      radio: "1",
       //是否更换
       Options: [
         { value: 1, label: "是" },
@@ -409,9 +409,18 @@ export default {
       ],
       //维修状态 map
       statusOptions: [
-        { value: 0, label: "已申请" },
-        { value: 1, label: "已同意" },
-        { value: 2, label: "已驳回" },
+        { value: 0, label: "申请中" },
+        { value: 1, label: "维修中" },
+        { value: 2, label: "已维修" },
+        { value: 3, label: "已确认" },
+        { value: 4, label: "已更换" },
+      ],
+      // 维修人查看时添加的换新或维修状态
+      repairMethodOptions: [
+        { value: 0, label: "换新" },
+        { value: 1, label: "维修" },
+        { value: 2, label: "已维修" },
+        { value: 3, label: "报废" },
       ],
       //查询参数
       queryParams: {
@@ -435,14 +444,23 @@ export default {
       showSearch: true,
       // 选中的资产ID
       selectedAssetId: null,
-
+      //审核按钮 绑定
+      repairStatus: 1,
+      //审核 备注
+      remark: "",
+      //审核按钮 被选中的那一行数据
+      rowExamine: {},
       assetList: [],
       //dialog 选择性展示
       revealStatus: false,
+      // 是否显示审核弹出层
+      showRepairmanDialog: false,
       // dialog弹框是否弹出
       dialogVisible: false,
       limit: 3, //最大上传数量
       dialogVisibleImg: false, // 控制预览对话框显示
+      //维修人员 维修操作 弹框
+      repairCompleteDialog: false,
       dialogImageUrl: "", // 当前预览图片的 URL
       disabled: false, // 控制是否禁用删除按钮
       fileList: [], //用来接收缓存中的图片
@@ -450,6 +468,8 @@ export default {
       imageUrl: [], // 这里存放所有图片的 URL
       //弹出层标题
       title: "",
+      roleId: "",
+
       //:rules="rules"
       // rules 用于设置表单验证规则。你可以在 data 中定义一个规则对象，
       // 并在表单元素中通过 prop 属性来绑定字段名。这样当表单提交时，Vue 会自动根据这些规则来验证数据。
@@ -463,20 +483,35 @@ export default {
       console.log("getInfo", response);
       this.form.userName = response.user.userName;
       this.form.userId = response.user.userId;
-      this.form.roleId = response.user.roles[0].roleId;
+      // this.form.roleId = response.user.roles[0].roleId;
+      this.roleId = response.user.roles[0].roleId;
+
+      console.log("roleId", this.roleId);
       this.form.deptName = response.user.deptName;
-      
 
       console.log(this.form.userName);
     });
     this.getList();
   },
-  // 上传超过限制后隐藏上传图标
+
   computed: {
+    // 上传超过限制后隐藏上传图标
     hideUpload() {
       console.log(this.fileList.length);
       console.log(this.limit);
       return this.fileList.length >= this.limit;
+    },
+    //  根据角色过滤数据
+    filteredRepairData() {
+      const roleId = this.roleId;
+      const userId = this.$store.state.user.id;
+      if (roleId === 1 || roleId === 3) {
+        return this.repairData; // 超级管理员看到所有数据
+      } else if (roleId === 2) {
+        return this.repairData.filter((item) => item.userId === userId); // 申请者只看到自己提交的任务
+      } else {
+        return []; // 其他角色返回空数据
+      }
     },
   },
   mounted() {},
@@ -498,6 +533,7 @@ export default {
       this.dialogVisible = false;
       this.reset();
     },
+    //弹框关闭提示
     handleClose(done) {
       this.$confirm("确认关闭？")
         .then((_) => {
@@ -506,6 +542,17 @@ export default {
         })
         .catch((_) => {});
     },
+    // 审核弹框取消按钮
+    cancelExamine() {
+      this.showRepairmanDialog = false;
+      this.resetExamine();
+    },
+    //维修人员 维修操作取消按钮
+    cancelComplete() {
+      this.repairCompleteDialog = false;
+      this.reset();
+    },
+
     /** 搜索按钮操作 */
     handleQuery() {
       this.queryParams.pageNum = 1;
@@ -516,6 +563,10 @@ export default {
       this.resetForm("queryForm");
       this.queryParams.userName = undefined;
       this.handleQuery();
+    },
+    // 表单重置
+    resetExamine() {
+      this.repairStatus = "1"; // 默认通过
     },
     //多选框选中数据
     handleSelectionChange(selection) {
@@ -530,6 +581,7 @@ export default {
       // // 比较日期的时间戳
       // return date.getTime() < today.setHours(0, 0, 0, 0); // 禁用今天之前的日期
     },
+
     //审核状态
     getStatusLabel(status) {
       // 根据状态值获取对应的文本标签
@@ -537,23 +589,49 @@ export default {
       return option ? option.label : "未知状态";
     },
     //审核按钮操作
-    handleExamine(row){
+    handleExamine(row) {
+      // this.$modal.confirm("row");
+      console.log("row", row);
+      this.rowExamine = row;
+      this.showRepairmanDialog = true;
+      const repairId = row.repairId;
+      //根据row - repairId获取相应的详细信息
+      this.getOrderByRow(row);
+    },
 
+    //根据row - repairId获取相应的详细信息
+    getOrderByRow(row) {
+      const repairId = row.repairId;
+      getRepairOrder(repairId).then((response) => {
+        this.form = response.data;
+        this.form.assetName = response.data.assets.assetName;
+      });
+    },
+    //维修人员点击维修完成
+    handleComplete(row) {
+      console.log("row", row);
+      this.repairCompleteDialog = true;
+      this.getOrderByRow(row); //根据row - repairId获取相应的详细信息
+      this.title = "维修人员-维修操作";
     },
     getList() {
-      console.log("qidonglema");
+      console.log("getList启动了吗");
       this.loading = true;
       repairList(this.queryParams).then((response) => {
         this.repairData = response.rows;
         this.total = response.total;
         this.loading = false;
+        this.form.roles = this.$store.state.user.roles; //xx想获取当前登录角色
+        console.log("$store_roles", this.form.roles);
       });
     },
     /** 删除按钮操作 */
-
     handleDelete(row) {
       this.$modal.confirm("row");
     },
+
+    //订单详情
+    handleDetails(row) {},
     handleOrder() {
       // this.reset();
       // getInfo().then((response) => {
@@ -568,21 +646,24 @@ export default {
     //确保 productChange 是 1 时，自动填充 isInStock
     //监听 productChange 变化，当它变为 1 时，从 this.stock 获取对应的值
     handleProductChange(value) {
+      // radio 无法得知当前焦点问题
+      const radios = document.querySelectorAll(".el-radio__original");
+      radios.forEach((radio) => {
+        radio.removeAttribute("aria-hidden");
+      });
+      console.log("是否换111", this.repairForm.productChange);
       if (value === 1 && this.selectedAssetId) {
-        //把选中的产品传输到这里
-
         console.log("查询库存", this.selectedAssetId);
         // 当选择 "是" 时，自动填充当前库存
         getAsset(this.selectedAssetId).then((response) => {
           console.log("查询库存", response.data);
-
-          this.form.isInStock = response.data.isInStock;
+          // this.form.isInStock = response.data.isInStock;
           this.form.assetManagerId = response.data.assetManagerId;
           console.log("this.form.assetManagerId", this.form.assetManagerId);
           // console.log("this.form.isInStock", this.form.isInStock);
 
-          //有时候 Vue 可能不会检测到它的变化，可以试着用 this.$set 手动更新它
-          // this.$set(this.form, "isInStock", response.data.isInStock);
+          // 有时候 Vue 可能不会检测到它的变化，可以试着用 this.$set 手动更新它
+          this.$set(this.form, "isInStock", response.data.isInStock);
         });
       }
     },
@@ -656,17 +737,7 @@ export default {
 
       uploadFiles(formData)
         .then((response) => {
-          // this.fileList.push({
-          //   uid: file.file.uid,
-          //   url: response.data,
-          // });
           console.log(this.fileList);
-          // 假设返回的数据中包含图片的 URL
-
-          // 存储所有上传成功的图片 URL
-          // if (!this.form.imageUrl) {
-
-          // }
           this.form.imageUrl = [];
           console.log("jieguo", response);
           this.imageUrl.push(response.msg); // 如果是多个图片，推入数组
@@ -674,8 +745,6 @@ export default {
           this.form.imageUrl = this.imageUrl.join(","); // 最后将其合并成字符串
           console.log("tu", this.imageUrl);
           console.log("fenge", this.form.imageUrl);
-          // this.form.imageUrl = response.data.msg;
-          // this.fileList.push(imageUrl)
           this.$message.success("上传成功");
         })
         .catch((error) => {
@@ -683,9 +752,8 @@ export default {
           this.$message.error("上传失败", error);
         });
     },
-
     //提交申请单
-    submitForm() {
+    submitRepairRequest() {
       this.$refs["form"].validate((valid) => {
         if (valid) {
           //如果是否更换条件为ture/1 更换产品 则在库存里减库存
@@ -705,16 +773,6 @@ export default {
               this.$message("库存更新失败", error);
             }
           }
-          // 假设 imageUrl 是要提交到后端的字段
-
-          // 这里提交表单时，可以把 imageUrl 加入表单数据中
-          // **如果 imageUrls 是数组，就直接 join(",")**
-          // **创建一个新对象，避免修改 this.form**
-          // const formData = {
-          // ...this.form, // 复制所有字段
-          // imageUrl: this.form.imageUrl.join(","), // **单独处理 imageUrls**
-          // };
-          // this.form.imageUrl = this.form.imageUrl.join(",");
           this.form.userId = this.$store.state.user.id;
           console.log("this.form.imageUrl", this.form.imageUrl);
           // 获取设备所属管理员 ID
@@ -722,7 +780,6 @@ export default {
             this.form.assetManagerId = response.data.assetManagerId;
             console.log("this.form.assetManagerId", this.form.assetManagerId);
           });
-
           addReapair(this.form)
             .then((response) => {
               this.$message.success("提交成功");
@@ -738,6 +795,29 @@ export default {
         }
       });
     },
+    //审核提交单
+    submitExamine() {
+      this.$refs["repairForm"].validate(() => {
+        console.log("checkId", this.repairId);
+        handelRepairAction(this.repairForm).then((response) => {
+          this.$message.success("提交成功");
+          console.log("上传成功", response.data);
+          this.showRepairmanDialog = false;
+          this.reset();
+        });
+      });
+    },
+    //维修人员 维修操作提交单 换新/维修
+    submitComplete() {
+      this.$refs["repairForm"].validate(() => {
+        handelRepairAction(this.repairForm).then((response) => {
+          this.$message.success("提交成功");
+          console.log("上传成功", response.data);
+          this.repairCompleteDialog = false;
+          this.reset();
+        });
+      });
+    },
   },
 };
 </script>
@@ -746,5 +826,13 @@ export default {
 /* 上传超过限制后隐藏上传图标 */
 .hideShow .el-upload--picture-card {
   display: none;
+}
+
+.el-radio input[aria-hidden="true"] {
+  display: none !important;
+}
+
+.el-radio:focus:not(.is-focus):not(:active):not(.is-disabled) .el-radio__inner {
+  box-shadow: none !important;
 }
 </style>

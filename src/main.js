@@ -94,3 +94,13 @@ new Vue({
   store,
   render: h => h(App)
 })
+
+//xx radio 无法得知当前焦点问题   未能解决
+Vue.directive('removeAriaHidden', {
+  bind(el, binding) {
+    const ariaEls = el.querySelectorAll('.el-radio__original')
+    ariaEls.forEach((item) => {
+      item.removeAttribute('aria-hidden')
+    })
+  }
+})
